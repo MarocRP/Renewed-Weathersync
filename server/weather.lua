@@ -102,3 +102,7 @@ if useScheduledWeather then
         end
     end)
 end
+
+exports('getWeatherList', function()
+    return weatherList
+end)
