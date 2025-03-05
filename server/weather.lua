@@ -10,6 +10,7 @@ local function executeCurrentWeather()
     local weather = weatherList[1]
 
     if weather then
+        lib.logger('weather', 'WeatherChange', json.encode(weather))
         GlobalState.weather = weather
     end
 
@@ -18,17 +19,19 @@ end
 
 local function runWeatherList()
     local currentWeather = executeCurrentWeather()
-
+    lib.logger('weather', 'WeatherSystemStart', 'Weather system initialized', 'startup')
     while not overrideWeather do
 
         if weatherList[1] then
             currentWeather.time -= 1
 
             if currentWeather.time <= 0 then
+                lib.logger('weather', 'WeatherExpired', 'Weather event expired: ' .. json.encode(currentWeather), 'expired')
                 table.remove(weatherList, 1)
                 currentWeather = executeCurrentWeather()
             end
         else
+            lib.logger('weather', 'WeatherListEmpty', 'Weather list is empty, regenerating', 'warning')
             currentWeather = executeCurrentWeather()
         end
         Wait(60000)
@@ -40,6 +43,7 @@ CreateThread(runWeatherList)
 -- Admin related events --
 RegisterNetEvent('Renewed-Weather:server:removeWeatherEvent', function(index)
     if IsPlayerAceAllowed(source, 'command.weather') and weatherList[index] then
+        lib.logger(source, 'AdminRemoveWeather', json.encode(weatherList[index]))
         table.remove(weatherList, index)
     end
 end)
@@ -47,7 +51,7 @@ end)
 lib.callback.register('Renewed-Weathersync:server:setWeatherType', function(source, index, weatherType)
     if IsPlayerAceAllowed(source, 'command.weather') and weatherList[index] then
         weatherList[index].weather = weatherType
-
+        lib.logger(source, 'AdminSetWeather', 'Admin set weather type to: ' .. weatherType .. ' at index: ' .. index, 'admin')
         if index == 1 then
             local currentWeather = weatherList[1]
             currentWeather.weather = weatherType
@@ -65,6 +69,7 @@ lib.callback.register('Renewed-Weathersync:server:setEventTime', function(source
     local weatherEvent = weatherList[index]
 
     if IsPlayerAceAllowed(source, 'command.weather') and weatherEvent then
+        lib.logger(source, 'AdminSetWeatherTime', 'Admin set weather event time to: ' .. eventTime .. ' at index: ' .. index, 'admin')
         weatherEvent.time = eventTime
 
         return eventTime
@@ -77,6 +82,7 @@ lib.addCommand('weather', {
     help = 'View and set the current weather forecast',
     restricted = 'group.admin',
 }, function(source)
+    lib.logger(source, 'AdminViewWeather', 'Admin viewed weather forecast', 'admin')
     TriggerClientEvent('Renewed-Weather:client:viewWeatherInfo', source, weatherList)
 end)
 
@@ -84,7 +90,9 @@ lib.addCommand('blackout', {
     help = 'Enable or disable the power blackout',
     restricted = 'group.admin',
 }, function()
-    GlobalState.blackOut = not GlobalState.blackOut
+    local newState = not GlobalState.blackOut
+    lib.logger(source, 'AdminToggleBlackout', 'Admin toggled blackout to: ' .. tostring(newState), 'admin')
+    GlobalState.blackOut = newState
 end)
 
 -- Scheduled restart --
@@ -94,6 +102,7 @@ if useScheduledWeather then
         local weather = secondsRemaining == 900 and 'OVERCAST' or secondsRemaining == 600 and 'RAIN' or secondsRemaining == 300 and 'THUNDER'
 
         if weather then
+            lib.logger('system', 'ScheduledRestartWeather', 'Setting weather to ' .. weather .. ' for scheduled restart in ' .. secondsRemaining .. ' seconds', 'restart')
             overrideWeather = true
             GlobalState.weather = {
                 weather = weather,
