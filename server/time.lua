@@ -81,7 +81,7 @@ end)
 if not useRealTime then
     lib.addCommand('time', {
         help = 'Set the current time',
-        restricted = 'group.admin',
+        restricted = 'group.superadmin',
         params = {
             {
                 name = 'hour',
@@ -110,7 +110,7 @@ if not useRealTime then
 
     lib.addCommand('noon', {
         help = 'Set the current time to noon (12:00)',
-        restricted = 'group.admin',
+        restricted = 'group.superadmin',
     }, function(source, _)
         lib.logger(source, 'AdminSetNoon', 'Admin set time to noon (12:00)', 'admin')
 
@@ -122,7 +122,7 @@ if not useRealTime then
 
     lib.addCommand('morning', {
         help = 'Set the current time to morning (9:00)',
-        restricted = 'group.admin',
+        restricted = 'group.superadmin',
     }, function(source, _)
         lib.logger(source, 'AdminSetMorning', 'Admin set time to morning (9:00)', 'admin')
 
@@ -134,7 +134,7 @@ if not useRealTime then
 
     lib.addCommand('evening', {
         help = 'Set the current time to evening (18:00)',
-        restricted = 'group.admin',
+        restricted = 'group.superadmin',
     }, function(source, _)
         lib.logger(source, 'AdminSetEvening', 'Admin set time to evening (18:00)', 'admin')
 
@@ -146,7 +146,7 @@ if not useRealTime then
 
     lib.addCommand('night', {
         help = 'Set the current time to night (23:00)',
-        restricted = 'group.admin',
+        restricted = 'group.superadmin',
     }, function(source, _)
         lib.logger(source, 'AdminSetNight', 'Admin set time to night (23:00)', 'admin')
 
@@ -158,7 +158,7 @@ if not useRealTime then
 
     lib.addCommand('timescale', {
         help = ('Set milliseconds per game second (default %s)'):format(currentScale),
-        restricted = 'group.admin',
+        restricted = 'group.superadmin',
         params = {
             {
                 name = 'scale',
@@ -175,7 +175,7 @@ if not useRealTime then
 
     lib.addCommand('freezetime', {
         help = 'Freeze / unfreeze time',
-        restricted = 'group.admin',
+        restricted = 'group.superadmin',
         params = {
             {
                 name = 'time',
@@ -191,3 +191,37 @@ if not useRealTime then
         globalState.freezeTime = newFreeze
     end)
 end
+
+local function clampTimeComponent(value, maximum)
+    local number = tonumber(value)
+    if not number then
+        return nil
+    end
+    number = math.floor(number)
+    if number < 0 then
+        number = 0
+    elseif number > maximum then
+        number = maximum
+    end
+    return number
+end
+
+exports('setTime', function(hourValue, minuteValue)
+    local invokingResource = GetInvokingResource() or 'external'
+    local newHour = clampTimeComponent(hourValue, 23)
+    if newHour == nil then
+        lib.logger('time', 'ExportSetTimeFailed', ('%s attempted to set time with invalid hour'):format(invokingResource), 'export')
+        return false
+    end
+    local newMinute = clampTimeComponent(minuteValue or 0, 59)
+    if newMinute == nil then
+        newMinute = 0
+    end
+    lib.logger('time', 'ExportSetTime', ('%s set time to %02d:%02d'):format(invokingResource, newHour, newMinute), 'export')
+    globalState.currentTime = {
+        hour = newHour,
+        minute = newMinute,
+    }
+    return true
+end)
+

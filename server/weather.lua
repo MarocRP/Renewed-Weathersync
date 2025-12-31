@@ -1,9 +1,17 @@
 local buildWeatherList = require 'server.weatherbuilder'
 
-local useScheduledWeather = lib.load('config.weather').useScheduledWeather
+local WeatherConfig = lib.load('config.weather')
+local useScheduledWeather = WeatherConfig.useScheduledWeather
 local weatherList = buildWeatherList()
 
 local overrideWeather = false
+
+local snowWeathers = {
+    SNOW = true,
+    SNOWLIGHT = true,
+    BLIZZARD = true,
+    XMAS = true,
+}
 
 -- weatherList executor --
 local function executeCurrentWeather()
@@ -80,7 +88,7 @@ end)
 
 lib.addCommand('weather', {
     help = 'View and set the current weather forecast',
-    restricted = 'group.admin',
+    restricted = 'group.superadmin',
 }, function(source)
     lib.logger(source, 'AdminViewWeather', 'Admin viewed weather forecast', 'admin')
     TriggerClientEvent('Renewed-Weather:client:viewWeatherInfo', source, weatherList)
@@ -88,7 +96,7 @@ end)
 
 lib.addCommand('blackout', {
     help = 'Enable or disable the power blackout',
-    restricted = 'group.admin',
+    restricted = 'group.superadmin',
 }, function()
     local newState = not GlobalState.blackOut
     lib.logger(source, 'AdminToggleBlackout', 'Admin toggled blackout to: ' .. tostring(newState), 'admin')
@@ -111,6 +119,99 @@ if useScheduledWeather then
         end
     end)
 end
+
+local function sanitizeDuration(value)
+    local duration = tonumber(value)
+    if duration then
+        duration = math.floor(duration)
+        if duration < 1 then
+            duration = 1
+        end
+    end
+    return duration
+end
+
+local function parseBoolean(value)
+    if type(value) == 'boolean' then
+        return value
+    end
+    if type(value) == 'number' then
+        return value ~= 0
+    end
+    if type(value) == 'string' then
+        local lowered = value:lower()
+        if lowered == 'true' or lowered == '1' or lowered == 'yes' or lowered == 'on' then
+            return true
+        end
+        if lowered == 'false' or lowered == '0' or lowered == 'no' or lowered == 'off' then
+            return false
+        end
+    end
+end
+
+exports('setWeather', function(weatherType, durationMinutes, metadata)
+    if type(weatherType) ~= 'string' then
+        return false
+    end
+    weatherType = weatherType:upper()
+    local invokingResource = GetInvokingResource() or 'external'
+    local currentWeather = weatherList[1]
+    local duration = sanitizeDuration(durationMinutes)
+    if not currentWeather then
+        currentWeather = {
+            weather = weatherType,
+            time = duration or WeatherConfig.weatherCycletimer or 10,
+        }
+        weatherList[1] = currentWeather
+    else
+        currentWeather.weather = weatherType
+
+        if duration then
+            currentWeather.time = duration
+        end
+    end
+    local metadataTable = type(metadata) == 'table' and metadata or nil
+    if metadataTable and metadataTable.windSpeed ~= nil then
+        local parsed = tonumber(metadataTable.windSpeed)
+        if parsed then
+            currentWeather.windSpeed = parsed
+        end
+    end
+    if metadataTable and metadataTable.windDirection ~= nil then
+        local parsed = tonumber(metadataTable.windDirection)
+        if parsed then
+            currentWeather.windDirection = parsed
+        end
+    end
+    if metadataTable and metadataTable.hasSnow ~= nil then
+        currentWeather.hasSnow = metadataTable.hasSnow and true or false
+    elseif not metadataTable then
+        currentWeather.hasSnow = snowWeathers[weatherType] or false
+    end
+    GlobalState.weather = currentWeather
+    lib.logger('weather', 'ExportSetWeather', ('%s set weather to %s'):format(invokingResource, weatherType), 'export')
+    return true
+end)
+
+exports('toggleBlackout', function()
+    local invokingResource = GetInvokingResource() or 'external'
+    local newState = not (GlobalState.blackOut or false)
+    GlobalState.blackOut = newState
+    lib.logger('weather', 'ExportToggleBlackout', ('%s toggled blackout to %s'):format(invokingResource, tostring(newState)), 'export')
+    return newState
+end)
+
+exports('setBlackout', function(state)
+    local invokingResource = GetInvokingResource() or 'external'
+    local parsed = parseBoolean(state)
+    if parsed == nil then
+        lib.logger('weather', 'ExportSetBlackoutFailed', ('%s attempted to set blackout with invalid value'):format(invokingResource), 'export')
+        return false
+    end
+    GlobalState.blackOut = parsed
+    lib.logger('weather', 'ExportSetBlackout', ('%s set blackout to %s'):format(invokingResource, tostring(parsed)), 'export')
+    return parsed
+end)
 
 exports('getWeatherList', function()
     return weatherList
