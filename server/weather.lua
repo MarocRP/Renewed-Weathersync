@@ -2,6 +2,9 @@ local buildWeatherList = require 'server.weatherbuilder'
 
 local WeatherConfig = lib.load('config.weather')
 local useScheduledWeather = WeatherConfig.useScheduledWeather
+
+
+---@type renewed_weather[]
 local weatherList = buildWeatherList()
 
 local overrideWeather = false
@@ -18,8 +21,8 @@ local function executeCurrentWeather()
     local weather = weatherList[1]
 
     if weather then
-        lib.logger('weather', 'WeatherChange', json.encode(weather))
-        GlobalState.weather = weather
+        lib.logger('weather', 'WeatherChange', json.encode(weather:GetWeatherData()))
+        GlobalState.weather = weather:GetWeatherData()
     end
 
     return weather
@@ -58,13 +61,13 @@ end)
 
 lib.callback.register('Renewed-Weathersync:server:setWeatherType', function(source, index, weatherType)
     if IsPlayerAceAllowed(source, 'command.weather') and weatherList[index] then
-        weatherList[index].weather = weatherType
+        local weatherEvent = weatherList[index]
+
+        weatherEvent:SetWeather(weatherType)
+
         lib.logger(source, 'AdminSetWeather', 'Admin set weather type to: ' .. weatherType .. ' at index: ' .. index, 'admin')
         if index == 1 then
-            local currentWeather = weatherList[1]
-            currentWeather.weather = weatherType
-
-            GlobalState.weather = currentWeather
+            GlobalState.weather = weatherEvent:GetWeatherData()
         end
 
         return weatherType
@@ -78,7 +81,7 @@ lib.callback.register('Renewed-Weathersync:server:setEventTime', function(source
 
     if IsPlayerAceAllowed(source, 'command.weather') and weatherEvent then
         lib.logger(source, 'AdminSetWeatherTime', 'Admin set weather event time to: ' .. eventTime .. ' at index: ' .. index, 'admin')
-        weatherEvent.time = eventTime
+        weatherEvent:SetEventTime(eventTime)
 
         return eventTime
     end
@@ -95,12 +98,21 @@ lib.addCommand('weather', {
 end)
 
 lib.addCommand('blackout', {
-    help = 'Enable or disable the power blackout',
-    restricted = 'group.superadmin',
-}, function()
-    local newState = not GlobalState.blackOut
+    help = 'Toggle server wide or player only blackout',
+	restricted = 'group.superadmin',
+	params = {
+		{ name = 'target', type = 'playerId', help = 'Target player\'s server id', optional = true },
+	}
+}, function(source, args)
+	if not args.target then
+		local newState = not GlobalState.blackOut
     lib.logger(source, 'AdminToggleBlackout', 'Admin toggled blackout to: ' .. tostring(newState), 'admin')
     GlobalState.blackOut = newState
+	else
+		local playerState = Player(args.target)
+        if not playerState then return end
+        playerState.state:set('playerBlackOut', not playerState.state?.playerBlackOut, true)
+	end
 end)
 
 -- Scheduled restart --
